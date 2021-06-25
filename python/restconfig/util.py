@@ -1,5 +1,7 @@
 """Utility module with helper functions that don't fit firmly in another module."""
 
+from requests import Response
+
 
 def naive_url_path_join(first: str, second: str, *args) -> str:
     path = first.strip()
@@ -25,3 +27,11 @@ def naive_url_path_join(first: str, second: str, *args) -> str:
             path = path + "/" + arg
 
     return path
+
+
+def response_ok(r: Response, allowed_status: list = None):
+    if allowed_status is None:
+        allowed_status = [200, 201]
+    if r.status_code not in allowed_status:
+        return False
+    return True

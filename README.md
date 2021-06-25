@@ -1,8 +1,9 @@
 # python-restconfig
 ConfigParser Subclass and Flask blueprint to provide network backed configmap functionality.
 
-I used abstract classes as much as possible to allow easy extension. You can create a subclass of Connection to provide other
-backends for the client than the provided REST API. It is also easy to create a subclass of the ConfigData class so that
-you can provide the REST API with a baking store other than a ConfigParser.
+I used abstract classes as much as possible to allow easy extension. The ReadOnlyConfig class and the RestBlueprint both 
+use the Connection abstract class to retrieve data. I have implemented a RawConfigParser Connection and a RestAPI
+Connection for this package. To add other backends, create a subclass of Connection as desired, and you can use it with 
+either the ReadOnlyConfig class, or the restconfig blueprint.
 
 Right now, I'm working on read access only. I may provide read/write in the future.
