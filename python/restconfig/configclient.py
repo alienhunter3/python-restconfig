@@ -80,8 +80,8 @@ class ReadOnlyConfig(RawConfigParser):
         except KeyError:
             return fallback
 
-    def items(self, *, raw: bool = ..., vars: dict = None) -> AbstractSet[Tuple[str, SectionProxy]]:
-        s = set()
+    def items(self, *, raw: bool = False, vars: dict = None) -> List[Tuple[str, SectionProxy]]:
+        s = []
         for i in self.keys():
-            s.add((i, SectionProxy(self, i)))
+            s.append((i, SectionProxy(self, i)))
         return s
