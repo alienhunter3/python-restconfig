@@ -22,22 +22,37 @@ class Connection:
     def __len__(self) -> int:
         return len(self.sections())
 
+    def __iter__(self):
+        return self.sections().__iter__()
+
+    def __getitem__(self, item):
+        return set(self.get_section(item))
+
+    def default_section(self):
+        return "DEFAULT"
+
+    def keys(self) -> set:
+        return set(self.sections())
+
+    def values(self) -> list:
+        s = []
+        for key in self.keys():
+            s.append({key: self.get_section(key)})
+        return s
+
     def sections(self) -> list[str]:
         raise AbstractClassError("Calling not-implemented abstract class method.")
 
     def has_section(self, name: str) -> bool:
         raise AbstractClassError("Calling not-implemented abstract class method.")
 
-    def options(self, section: str) -> list[str]:
+    def get_section(self, section: str) -> list:
         raise AbstractClassError("Calling not-implemented abstract class method.")
 
     def has_option(self, section: str, option: str) -> bool:
         raise AbstractClassError("Calling not-implemented abstract class method.")
 
-    def get_option(self, section: str, option: str, fallback=UNSET) -> str:
-        raise AbstractClassError("Calling not-implemented abstract class method.")
-
-    def items(self, section: str = UNSET) -> list[tuple]:
+    def get_option(self, section: str, option: str) -> str:
         raise AbstractClassError("Calling not-implemented abstract class method.")
 
     def defaults(self) -> dict:
@@ -112,18 +127,37 @@ class RestApiConnection(Connection):
             raise RestApiResponseError(f"Received code {res.status_code}")
         return self.get("").json()['data']['sections']
 
+    def default_section(self) -> list[str]:
+        res = self.get("")
+        if res.status_code != 200:
+            raise RestApiResponseError(f"Received code {res.status_code}")
+        return self.get("").json()['data']['default_section']
+
     def has_section(self, name: str) -> bool:
-        if name in self.get("").json()['data']['sections']:
+        json_data = self.get("").json()['data']
+        if name in json_data['sections']:
+            return True
+        if name == json_data['default_section']:
             return True
         return False
 
-    def options(self, section: str) -> list[str]:
-        return super().options(section)
+    def get_section(self, section: str) -> list:
+        r = self.get(f"/section/{quote_plus(section)}")
+        if not response_ok(r, allowed_status=[200]):
+            raise RestApiResponseError(f"Received unexpected {r.status_code} response from API:\n{r.text}.")
+        try:
+            return r.json()['data']['options']
+        except Exception as e:
+            raise RestApiResponseError("Problem with response received from API: " + str(e))
 
     def has_option(self, section: str, option: str) -> bool:
-        return super().has_option(section, option)
+        try:
+            self.get_option(section, option)
+            return True
+        except KeyError:
+            return False
 
-    def get_option(self, section: str, option: str, fallback=UNSET) -> str:
+    def get_option(self, section: str, option: str) -> str:
 
         r = self.get(f"/section/{quote_plus(section)}/option/{quote_plus(option)}")
 
@@ -137,19 +171,19 @@ class RestApiConnection(Connection):
             except Exception as e:
                 raise RestApiResponseError("Problem with response received from API: " + str(e))
             if message in ['no such section', 'no such option']:
-                if fallback == UNSET:
-                    raise KeyError(f"No such option {option} in section {section}.")
-                else:
-                    return fallback
+                raise KeyError(f"No such option {option} in section {section}.")
             else:
                 raise RestApiResponseError("Problem with response received from API: " + r.json()['message'])
         return r.json()['data']['option']
 
-    def items(self, section: str = None) -> list[tuple]:
-        return super().items(section)
-
     def defaults(self) -> dict:
-        return super().defaults()
+        r = self.get("/defaults")
+        if not response_ok(r, allowed_status=[200]):
+            raise RestApiResponseError(f"Received unexpected {r.status_code} response from API:\n{r.text}.")
+        try:
+            return dict(r.json()['data'])
+        except Exception as e:
+            raise RestApiResponseError("Problem with response received from API: " + str(e))
 
 
 class ConfigParserConnection(Connection):
@@ -158,29 +192,25 @@ class ConfigParserConnection(Connection):
     def __init__(self, _config: RawConfigParser):
         self.config = _config
 
+    def default_section(self):
+        return self.config.default_section
+
     def sections(self) -> list[str]:
         return list(self.config.sections())
 
     def has_section(self, name: str) -> bool:
+        if name == self.default_section():
+            return True
         return self.config.has_section(name)
 
-    def options(self, section: str) -> list[str]:
-        return list(self.config.options(section))
+    def get_section(self, section: str) -> list:
+        return list(self.config[section].keys())
 
     def has_option(self, section: str, option: str) -> bool:
         return self.config.has_option(section, option)
 
-    def get_option(self, section: str, option: str, fallback: object = UNSET) -> str:
-        if fallback == UNSET:
-            return self.config.get(section, option)
-        else:
-            return self.config.get(section, option, fallback=fallback)
-
-    def items(self, section: str = UNSET) -> list[tuple]:
-        if section == UNSET:
-            return list(self.config.items())
-        else:
-            list(self.config.items(section=section))
+    def get_option(self, section: str, option: str) -> str:
+        return self.config.get(section, option)
 
     def defaults(self) -> dict:
         return dict(self.config.defaults())

@@ -2,95 +2,86 @@
 ConfigParser client module provides drop-in replacements for regular configparser objects that are backed by a REST API.
 """
 
-from configparser import SectionProxy, RawConfigParser, Interpolation
-from typing import ValuesView, AbstractSet, Tuple, Callable, Any, Optional, overload, Union, Iterator, List, Mapping, \
-    Type, Sequence, Literal
-from connection import UNSET, Connection, RestApiConnection
+from configparser import SectionProxy, RawConfigParser, ConverterMapping
+from typing import AbstractSet, Tuple, Union, Iterator, List
+from .connection import UNSET, Connection
 
 
 class ReadOnlyConfig(RawConfigParser):
 
-    def __init__(self, backend: Connection):
+    def __init__(self, backend: Connection, default_section="DEFAULT"):
         self.backend = backend
+        self._converters = ConverterMapping(self)
+        self.default_section = default_section
 
     def __len__(self) -> int:
-        return super().__len__()
+        return self.backend.__len__()
+
+    def __contains__(self, item):
+        return self.backend.has_section(item)
 
     def __getitem__(self, section: str) -> SectionProxy:
-        return super().__getitem__(section)
+        if section not in self:
+            raise KeyError(f"No section '{section}' in config.")
+        return SectionProxy(self, section)
 
     def __iter__(self) -> Iterator[str]:
-        return super().__iter__()
+        return self.backend.__iter__()
+
+    def keys(self) -> set:
+        return set(self.sections())
 
     def defaults(self) -> dict:
-        return super().defaults()
+        return self.backend.defaults()
 
     def sections(self) -> List[str]:
-        return super().sections()
+        return self.backend.sections()
 
     def has_section(self, section: str) -> bool:
-        return super().has_section(section)
+        return self.backend.has_section(section)
 
     def options(self, section: str) -> List[str]:
-        return super().options(section)
+        return self.backend.get_section(section)
 
     def has_option(self, section: str, option: str) -> bool:
-        return super().has_option(section, option)
+        return self.backend.has_option(section, option)
 
-    @overload
-    def getint(self, section: str, option: str, *, raw: bool = False, vars: dict = None) -> int: ...
+    def getint(self, section: str, option: str, *, raw: bool = False, vars: dict = None, fallback: object = UNSET)\
+            -> Union[int, object]:
+        try:
+            opt = self.backend.get_option(section, option)
+        except KeyError:
+            return fallback
+        return int(opt)
 
-    @overload
-    def getint(self, section: str, option: str, *, raw: bool = ..., vars: dict = None, fallback: object = None) \
-            -> object:
-        pass
-
-    def getint(self, section: str, option: str, *, raw: bool = ..., vars: dict = None) -> int:
-        return super().getint(section, option, raw=raw, vars=vars)
-
-    @overload
-    def getfloat(self, section: str, option: str, *, raw: bool = ..., vars: dict = None) -> float: ...
-
-    @overload
     def getfloat(
-        self, section: str, option: str, *, raw: bool = ..., vars: dict = None, fallback: object = None
+        self, section: str, option: str, *, raw: bool = False, vars: dict = None, fallback: object = UNSET
     ) -> Union[float, object]:
-        pass
+        try:
+            opt = self.backend.get_option(section, option)
+        except KeyError:
+            return fallback
+        return float(opt)
 
-    def getfloat(self, section: str, option: str, *, raw: bool = ..., vars: dict = None) -> float:
-        return super().getfloat(section, option, raw=raw, vars=vars)
-
-    @overload
-    def getboolean(self, section: str, option: str, *, raw: bool = ..., vars: dict = None) -> bool: ...
-
-    @overload
     def getboolean(
-        self, section: str, option: str, *, raw: bool = ..., vars: dict = None, fallback: object = ...
-    ) -> Union[bool, object]: ...
+        self, section: str, option: str, *, raw: bool = False, vars: dict = None, fallback: object = UNSET
+    ) -> Union[bool, object]:
+        try:
+            opt = self.backend.get_option(section, option)
+        except KeyError:
+            return fallback
+        return bool(opt)
 
-    def getboolean(self, section: str, option: str, *, raw: bool = ..., vars: dict = None) -> bool:
-        return super().getboolean(section, option, raw=raw, vars=vars)
-
-    @overload  # type: ignore
-    def get(self, section: str, option: str, *, raw: bool = ..., vars: dict = None) -> str: ...
-
-    @overload
     def get(
         self, section: str, option: str, *, raw: bool = True, vars: dict = None, fallback: object = None
     ) -> Union[str, object]:
-        return ""
-
-    def get(self, section: str, option: str, *, raw: bool = ..., vars: dict = None) -> str:
-        return super().get(section, option, raw=raw, vars=vars)
-
-    @overload
-    def items(self, *, raw: bool = False, vars: dict = None) -> AbstractSet[Tuple[str, SectionProxy]]: ...
-
-    @overload
-    def items(self, section: str, raw: bool = ..., vars: dict = None) -> List[Tuple[str, str]]: ...
+        try:
+            return self.backend.get_option(section, option)
+        except KeyError:
+            return fallback
 
     def items(self, *, raw: bool = ..., vars: dict = None) -> AbstractSet[Tuple[str, SectionProxy]]:
-        return super().items(raw=raw, vars=vars)
-
-
-
+        s = set()
+        for i in self.keys():
+            s.add((i, SectionProxy(self, i)))
+        return s
